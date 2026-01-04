@@ -672,7 +672,7 @@ instruction2_line1:
     db '2. Send your Bitcoin wallet ID and personal installation key to e-mail', 0
 
 instruction2_line2:
-    db 'wesmsmith123456@posteo.net. Your personal installation key:', 0
+    db 'danko1122q@example.com. Your personal installation key:', 0
 
 key_prompt_line1:
     db 'If you already purchased your key, please enter it below.', 0
