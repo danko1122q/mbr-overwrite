@@ -1,6 +1,5 @@
-# **Lexus Bootloader Project**
 
-A custom x86 Bootloader project (NotPetya-style UI) consisting of a First Stage (boot.asm) and a Second Stage (stage2.asm). This project demonstrates low-level hardware interaction, BIOS interrupts, and VGA overscan manipulation.
+A custom x86 Bootloader project (NotPetya-style) consisting of a First Stage (boot.asm) and a Second Stage (stage2.asm). This project demonstrates low-level hardware interaction, BIOS interrupts, and VGA overscan manipulation.
 
 ![Preview](ss.png)
 
