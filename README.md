@@ -13,16 +13,19 @@ A custom x86 Bootloader project (NotPetya-style UI) consisting of a First Stage 
 
 To build the raw floppy/disk image and run it safely in QEMU:
 
-1. **Assemble the code:**  
+1. **Assemble the code:**
+   ```  
    nasm \-f bin boot.asm \-o boot.bin  
    nasm \-f bin stage2.asm \-o stage2.bin
-
-2. **Combine stages into one image:**  
+   ```
+3. **Combine stages into one image:**
+   ``` 
    cat boot.bin stage2.bin \> lexus.img
-
-3. **Run safely in QEMU:**  
+   ```
+4. **Run safely in QEMU:**
+   ```  
    qemu-system-x86\_64 \-drive format=raw,file=lexus.img \-vga std \-display gtk,zoom-to-fit=on
-
+   ```
 ## ** Build Windows Executable (.EXE)**
 
 If you have the main.c wrapper and a Mingw-w64 environment, you can use the make command:
