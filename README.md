@@ -25,7 +25,9 @@ To build the raw floppy/disk image and run it safely in QEMU:
    ```
 4. **Run safely in QEMU:**
    ```  
-   qemu-system-x86\_64 \-drive format=raw,file=lexus.img \-vga std \-display gtk,zoom-to-fit=on
+   qemu-system-x86_64 -drive format=raw,file=lexus.img \
+   -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 \
+   -vga std -display gtk,zoom-to-fit=on
    ```
 ## ** Build Windows Executable (.EXE)**
 
