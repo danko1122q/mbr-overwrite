@@ -1,0 +1,49 @@
+# **Lexus Bootloader Project**
+
+A custom x86 Bootloader project (NotPetya-style UI) consisting of a First Stage (boot.asm) and a Second Stage (stage2.asm). This project demonstrates low-level hardware interaction, BIOS interrupts, and VGA overscan manipulation.
+
+## **⚠️ CRITICAL WARNING**
+
+**THIS PROJECT IS POTENTIALLY DESTRUCTIVE.** \* Running the build outputs on a physical machine **WILL OVERWRITE YOUR MBR (Master Boot Record)**.
+
+* This will render your operating system unbootable and result in data loss.  
+* **ONLY** run the resulting files inside a virtual machine (like QEMU).
+
+## ** Compilation (Raw Mode)**
+
+To build the raw floppy/disk image and run it safely in QEMU:
+
+1. **Assemble the code:**  
+   nasm \-f bin boot.asm \-o boot.bin  
+   nasm \-f bin stage2.asm \-o stage2.bin
+
+2. **Combine stages into one image:**  
+   cat boot.bin stage2.bin \> lexus.img
+
+3. **Run safely in QEMU:**  
+   qemu-system-x86\_64 \-drive format=raw,file=lexus.img \-vga std \-display gtk,zoom-to-fit=on
+
+## ** Build Windows Executable (.EXE)**
+
+If you have the main.c wrapper and a Mingw-w64 environment, you can use the make command:
+
+make
+
+### ** EXE EXECUTION WARNING**
+
+Even though this generates a .exe file, **DO NOT run lexus\_mbr.exe on your host Windows machine.** The executable is designed to write the bootloader data directly to the physical drive (MBR).
+
+**If you must test the EXE, do it ONLY inside a Windows Virtual Machine.**
+
+**The Makefile performs the following:**
+
+* Compiles boot.asm and stage2.asm to binary.  
+* Converts binaries to C headers using xxd.  
+* Compiles the final Windows executable:  
+  i686-w64-mingw32-gcc \-m32 \-Os \-Wall \-s \-static \-Wl,--subsystem,windows \-o lexus\_mbr.exe main.c
+
+## ** Project Details**
+
+* **Type:** x86 Bootloader (Real Mode)  
+* **Default Password:** 1028952853  
+* **Features:** Red screen UI, Fake MFT loading bar, Panic blink effect.
