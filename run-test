@@ -1,4 +1,7 @@
 nasm -f bin boot.asm -o boot.bin
 nasm -f bin stage2.asm -o stage2.bin
 cat boot.bin stage2.bin > lexus.img
-qemu-system-x86_64 -drive format=raw,file=lexus.img -vga std -display gtk,zoom-to-fit=on
+
+qemu-system-x86_64 -drive format=raw,file=lexus.img \
+  -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 \
+  -vga std -display gtk,zoom-to-fit=on
