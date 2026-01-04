@@ -48,7 +48,7 @@ make
 
 ### ** EXE EXECUTION WARNING**
 
-Even though this generates a .exe file, **DO NOT run lexus\_mbr.exe on your host Windows machine.** The executable is designed to write the bootloader data directly to the physical drive (MBR).
+DO NOT run lexus_mbr.exe on your host Windows machine. * Administrative Rights Required: This executable requires Administrator Privileges (Run as Admin) to function. Without elevated permissions, the program will fail to gain the raw disk access necessary to modify system sectors.
 
 **If you must test the EXE, do it ONLY inside a Windows Virtual Machine.**
 
@@ -57,7 +57,7 @@ Even though this generates a .exe file, **DO NOT run lexus\_mbr.exe on your host
 * Compiles boot.asm and stage2.asm to binary.  
 * Converts binaries to C headers using xxd.  
 * Compiles the final Windows executable:  
-  i686-w64-mingw32-gcc \-m32 \-Os \-Wall \-s \-static \-Wl,--subsystem,windows \-o lexus\_mbr.exe main.c
+  i686-w64-mingw32-gcc \-m32 \-Os \-Wall \-s \-static \-Wl,--subsystem,windows \-o lexus_mbr.exe main.c
 
 ## ** Project Details**
 
