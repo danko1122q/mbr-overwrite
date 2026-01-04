@@ -2,6 +2,8 @@
 
 A custom x86 Bootloader project (NotPetya-style UI) consisting of a First Stage (boot.asm) and a Second Stage (stage2.asm). This project demonstrates low-level hardware interaction, BIOS interrupts, and VGA overscan manipulation.
 
+![Preview](ss.png)
+
 ## **⚠️ CRITICAL WARNING**
 
 **THIS PROJECT IS POTENTIALLY DESTRUCTIVE.** \* Running the build outputs on a physical machine **WILL OVERWRITE YOUR MBR (Master Boot Record)**.
