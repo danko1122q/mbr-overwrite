@@ -65,11 +65,11 @@ int main() {
         return 4;
     }
     
-    // PERBAIKAN DI SINI:
-    // BIOS menghitung sektor mulai dari 1 (1=MBR, 2=Stage2).
-    // Secara byte, Sektor 2 dimulai pada offset 512.
+    // FIX HERE:
+// BIOS counts sectors starting at 1 (1=MBR, 2=Stage2).
+// Byte-wise, Sector 2 starts at offset 512.
     LARGE_INTEGER stage2Pos;
-    stage2Pos.QuadPart = 512 * 1; // Menunjuk ke byte ke-512 (Awal Sektor 2)
+    stage2Pos.QuadPart = 512 * 1; // Points to the 512th byte (Start of Sector 2)
     
     SetFilePointer(
         hDrive,
