@@ -24,10 +24,21 @@ To build the raw floppy/disk image and run it safely in QEMU:
    cat boot.bin stage2.bin \> lexus.img
    ```
 4. **Run safely in QEMU:**
-   ```  
+   ```
+   #linux:
    qemu-system-x86_64 -drive format=raw,file=lexus.img \
    -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 \
    -vga std -display gtk,zoom-to-fit=on
+
+   #Windows:
+   qemu-system-x86_64 -drive format=raw,file=lexus.img \
+   -audiodev dsound,id=snd0 -machine pcspk-audiodev=snd0 \
+   -vga std -display sdl,zoom-to-fit=on
+
+   #macOS:
+   qemu-system-x86_64 -drive format=raw,file=lexus.img \
+   -audiodev coreaudio,id=snd0 -machine pcspk-audiodev=snd0 \
+   -vga std -display cocoa
    ```
 ## ** Build Windows Executable (.EXE)**
 
