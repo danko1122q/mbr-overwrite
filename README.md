@@ -64,3 +64,5 @@ Even though this generates a .exe file, **DO NOT run lexus\_mbr.exe on your host
 * **Type:** x86 Bootloader (Real Mode)  
 * **Default Password:** 1028952853  
 * **Features:** Red screen UI, Fake MFT loading bar, Panic blink effect.
+* **⚠️ Technical Warning**
+Even if the correct password (1028952853) is entered, it will not restore access to the original operating system. The Master Boot Record (MBR) has been permanently replaced by this bootloader, overwriting the original boot code.
